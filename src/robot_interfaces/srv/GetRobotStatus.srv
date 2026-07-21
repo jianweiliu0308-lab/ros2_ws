@@ -1,0 +1,10 @@
+# 查询整机状态
+---
+uint8 mode
+uint8 robot_status
+bool safety_ok
+string message
+
+uint8 MODE_IDLE=0
+uint8 MODE_MANUAL=1
+uint8 MODE_AUTO=2

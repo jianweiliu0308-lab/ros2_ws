@@ -1,0 +1,9 @@
+# 切换运行模式（由 supervisor 提供）
+uint8 mode
+
+uint8 MODE_IDLE=0
+uint8 MODE_MANUAL=1
+uint8 MODE_AUTO=2
+---
+bool success
+string message

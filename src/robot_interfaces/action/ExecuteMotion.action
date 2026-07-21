@@ -1,0 +1,13 @@
+# 执行运动（长任务，带进度反馈）
+float64[] target_joints
+float64 velocity_scale
+---
+bool success
+string message
+---
+float64 progress
+uint8 phase
+
+uint8 PHASE_PLANNING=0
+uint8 PHASE_EXECUTING=1
+uint8 PHASE_DONE=2

@@ -1,6 +1,0 @@
-/** param_node 默认参数，对应教程 ros2 param dump/load */
-param_node:
-  ros__parameters:
-    robot_name: "learner_bot"
-    publish_rate_hz: 2
-    verbose: true

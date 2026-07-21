@@ -1,5 +1,0 @@
-# 查询学生信息（沿用原接口，略作学习向完善）
-string name
----
-bool success
-string info

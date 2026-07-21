@@ -1,0 +1,20 @@
+robot_driver:
+  ros__parameters:
+    dof: 6
+    publish_rate_hz: 50.0
+    max_joint_velocity: 0.5
+
+safety_monitor:
+  ros__parameters:
+    warning_radius_m: 0.8
+    violation_radius_m: 1.2
+    simulate_e_stop: false
+
+trajectory_planner:
+  ros__parameters:
+    interpolation_steps: 10
+
+supervisor:
+  ros__parameters:
+    demo_target_joints: [0.5, 0.2, -0.1, 0.0, 0.3, 0.0]
+    auto_task_period_sec: 8.0

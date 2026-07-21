@@ -1,0 +1,8 @@
+# 轨迹规划请求
+float64[] start_joints
+float64[] goal_joints
+float64 max_velocity
+---
+bool success
+float64[] trajectory_points
+string message
