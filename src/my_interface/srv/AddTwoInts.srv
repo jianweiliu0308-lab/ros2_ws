@@ -1,0 +1,5 @@
+# 两数相加服务（用于 Service 练习）
+int64 a
+int64 b
+---
+int64 sum
