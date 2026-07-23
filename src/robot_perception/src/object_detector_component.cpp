@@ -4,23 +4,30 @@
 #include <string>
 
 #include "geometry_msgs/msg/pose.hpp"
-#include "robot_interfaces/msg/detected_object.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "rclcpp_components/register_node_macro.hpp"
+#include "robot_interfaces/msg/detected_object.hpp"
 
 using DetectedObject = robot_interfaces::msg::DetectedObject;
 
-/** 感知层：模拟目标检测，发布 /perception/objects */
+namespace robot_perception
+{
+
+/**
+ * 目标检测组件：可独立进程运行，也可与 safety_monitor 共进程。
+ * 发布 /perception/objects。
+ */
 class ObjectDetectorNode : public rclcpp::Node
 {
 public:
-  ObjectDetectorNode()
-  : Node("object_detector")
+  explicit ObjectDetectorNode(const rclcpp::NodeOptions & options)
+  : Node("object_detector", options)
   {
     pub_ = create_publisher<DetectedObject>("perception/objects", 10);
     timer_ = create_wall_timer(
       std::chrono::seconds(1),
       std::bind(&ObjectDetectorNode::publish_objects, this));
-    RCLCPP_INFO(get_logger(), "Object detector ready");
+    RCLCPP_INFO(get_logger(), "Object detector ready (component)");
   }
 
 private:
@@ -42,10 +49,6 @@ private:
   int seq_{0};
 };
 
-int main(int argc, char * argv[])
-{
-  rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<ObjectDetectorNode>());
-  rclcpp::shutdown();
-  return 0;
-}
+}  // namespace robot_perception
+
+RCLCPP_COMPONENTS_REGISTER_NODE(robot_perception::ObjectDetectorNode)

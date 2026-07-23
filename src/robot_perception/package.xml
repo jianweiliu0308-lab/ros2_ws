@@ -3,12 +3,13 @@
 <package format="3">
   <name>robot_perception</name>
   <version>1.0.0</version>
-  <description>Perception and safety monitoring layer</description>
+  <description>Perception and safety monitoring layer (supports ROS 2 Composition)</description>
   <maintainer email="jianwei.liu@phigent.ai">root</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
   <depend>rclcpp</depend>
+  <depend>rclcpp_components</depend>
   <depend>geometry_msgs</depend>
   <depend>robot_interfaces</depend>
 

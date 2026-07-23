@@ -22,7 +22,7 @@ source install/setup.bash
 ros2 launch robot_bringup robot_bringup.launch.py
 ```
 
-**做了什么**：按层启动 driver（自动 lifecycle activate）→ perception → motion → supervisor。
+**做了什么**：按层启动 driver（Lifecycle activate）→ perception（默认 Composition 共进程）→ motion → supervisor。
 
 启动后应看到节点：
 
@@ -35,6 +35,14 @@ ros2 node list
 # /motion_executor
 # /supervisor
 # /world_to_base
+# /perception_container   # Composition 容器（感知两节点跑在此进程内）
+```
+
+对照多进程感知：
+
+```bash
+ros2 launch robot_bringup robot_bringup.launch.py use_composition:=false
+# 此时无 perception_container，safety_monitor / object_detector 各占一进程
 ```
 
 ---
@@ -127,8 +135,9 @@ ros2 action send_goal /motion/execute robot_interfaces/action/ExecuteMotion \
 # 仅驱动
 ros2 launch robot_bringup driver.launch.py
 
-# 仅感知
+# 仅感知（默认 Composition）
 ros2 launch robot_bringup perception.launch.py
+ros2 launch robot_bringup perception.launch.py use_composition:=false
 
 # 仅运动
 ros2 launch robot_bringup motion.launch.py
@@ -139,15 +148,70 @@ ros2 launch robot_bringup supervisor.launch.py
 
 ---
 
-## 6. 安全场景演练
+## 6. Composition 实操（感知层共进程）
 
-### 6.1 模拟安全区违规
+**这一节学什么**：多节点同进程，类似 CyberRT；对外话题不变。
+
+### 6.1 查看已加载组件
+
+```bash
+# 先启动感知层（Composition）
+ros2 launch robot_bringup perception.launch.py
+
+# 另开终端
+ros2 component list
+# 做了什么：列出容器内加载的插件（SafetyMonitor / ObjectDetector）
+
+ros2 node list
+# 应看到 /perception_container、/safety_monitor、/object_detector
+```
+
+### 6.2 对照：独立进程
+
+```bash
+ros2 launch robot_bringup perception.launch.py use_composition:=false
+# 做了什么：仍是两个节点名，但是两个进程（可用 ps 对照）
+
+ros2 component list
+# 做了什么：此时通常没有 perception_container，list 为空或无该容器
+```
+
+### 6.3 单独跑组件可执行文件（调试）
+
+组件仍可像普通节点一样启动（CMake 生成了 EXECUTABLE）：
+
+```bash
+ros2 run robot_perception safety_monitor_node
+ros2 run robot_perception object_detector_node
+# 做了什么：各开一进程，不经过 container；适合单模块调试
+```
+
+### 6.4 进程模型对照
+
+```
+use_composition:=true（默认）
+  进程 perception_container
+    ├─ safety_monitor
+    └─ object_detector
+
+use_composition:=false
+  进程 safety_monitor_node
+  进程 object_detector_node
+```
+
+驱动 / 运动 / 监督始终独立进程，与 Composition 正交。
+
+---
+
+## 7. 安全场景演练
+
+### 7.1 模拟安全区违规
 
 编辑 `robot_bringup/config/robot_params.yaml`，把 `violation_radius_m` 改小（如 `0.3`），重新编译安装后启动。
 
 大关节运动时 TCP 超出半径 → `safety_zone=VIOLATION` → supervisor 进入 FAULT → 运动被拒绝。
 
-### 6.2 模拟急停
+### 7.2 模拟急停
 
 ```yaml
 safety_monitor:
@@ -157,7 +221,7 @@ safety_monitor:
 
 重启后 `safety_ok=false`，无法进入 AUTO，ExecuteMotion 会被拒绝。
 
-### 6.3 从故障恢复
+### 7.3 从故障恢复
 
 ```bash
 # 先排除故障（改回参数 / 清除 e_stop）
@@ -167,7 +231,7 @@ ros2 service call /supervisor/set_mode robot_interfaces/srv/SetMode "{mode: 0}"
 
 ---
 
-## 7. 参数调优
+## 8. 参数调优
 
 配置文件：`src/robot_bringup/config/robot_params.yaml`
 
@@ -190,7 +254,7 @@ source install/setup.bash
 
 ---
 
-## 8. 录制与回放（运维）
+## 9. 录制与回放（运维）
 
 ```bash
 # 录制关键话题
@@ -202,7 +266,7 @@ ros2 bag play robot_run
 
 ---
 
-## 9. 接口速查
+## 10. 接口速查
 
 ```bash
 ros2 interface show robot_interfaces/msg/RobotState
@@ -213,22 +277,25 @@ ros2 interface show robot_interfaces/action/ExecuteMotion
 
 ---
 
-## 10. 推荐学习路径
+## 11. 推荐学习路径
 
 1. `ros2 launch robot_bringup robot_bringup.launch.py` — 看整机起来  
 2. `topic echo` — 理解数据流  
 3. `set_mode AUTO` — 看监督层调度  
 4. `action send_goal` — 理解规划→执行链路  
-5. 改 `robot_params.yaml` — 触发 FAULT，理解安全链  
-6. 读 `industrial_robot_architecture.md` — 对照分层图  
+5. Composition 对照（`use_composition` true/false）— 理解共进程  
+6. 改 `robot_params.yaml` — 触发 FAULT，理解安全链  
+7. 读 `industrial_robot_architecture.md` — 对照分层图  
 
 ---
 
-## 11. 常见问题
+## 12. 常见问题
 
 | 现象 | 原因 | 处理 |
 |------|------|------|
 | 无 `/robot/state` | driver 未 activate | 检查 driver.launch lifecycle |
 | AUTO 不运动 | safety 不 OK 或不在 AUTO | `get_status` 排查 |
 | Action 被拒绝 | 安全违规或 driver 未 active | 先 bringup 整机 |
+| `ros2 component list` 为空 | 用了 `use_composition:=false` 或未起 perception | 默认 true 再 list |
+| 找不到 plugin | 未编 perception 或未 source | 重编并 `source install/setup.bash` |
 | 编译接口失败 | 未用系统 Python | `-DPYTHON_EXECUTABLE=/usr/bin/python3` |

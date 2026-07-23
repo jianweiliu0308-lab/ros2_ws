@@ -13,6 +13,7 @@
 | 安全可控 | 安全监控 + Supervisor 状态机 + 运动前安全检查 |
 | 可部署 | `robot_bringup` 分层 Launch，一键启动整机 |
 | 可运维 | 统一参数 YAML、标准诊断话题、支持 bag 录制 |
+| 进程灵活 | 感知层默认 Composition 共进程；驱动/运动/监督仍独立进程 |
 
 ---
 
@@ -33,9 +34,11 @@
           ▼                                    │
 ┌──────────────────────┐            ┌─────────────────────────┐
 │   robot_motion       │            │   robot_perception      │
-│ 规划: plan_trajectory│            │ 安全: /robot/safety      │
-│ 执行: execute (Action)│            │ 感知: /perception/objects│
-└──────────────────────┘            └─────────────────────────┘
+│ 规划: plan_trajectory│            │ ★ Composition 共进程    │
+│ 执行: execute (Action)│            │  safety + detector       │
+│ (独立进程)            │            │ 安全: /robot/safety      │
+└──────────────────────┘            │ 感知: /perception/objects│
+                                    └─────────────────────────┘
           │                                    ▲
           ▼                                    │
 ┌─────────────────────────────────────────────────────────────┐
@@ -58,8 +61,8 @@
 |------|------|------|
 | `robot_interfaces` | 接口 | 消息、服务、动作定义，无运行时代码 |
 | `robot_driver` | 驱动 | 硬件抽象，Lifecycle 管理，发布关节/TCP 状态 |
-| `robot_perception` | 感知 | 安全区域监控、目标检测（本仓库为仿真） |
-| `robot_motion` | 运动 | 轨迹规划服务 + Action 执行器 |
+| `robot_perception` | 感知 | 安全 + 目标检测；**Component**，默认同进程容器 |
+| `robot_motion` | 运动 | 轨迹规划服务 + Action 执行器（独立进程） |
 | `robot_supervisor` | 监督 | 运行模式管理、自动任务调度、故障降级 |
 | `robot_bringup` | 部署 | Launch 编排、参数配置、TF 静态树 |
 
@@ -152,7 +155,43 @@ motion_executor ──/motion/plan_trajectory (Service)──► trajectory_plan
 
 ---
 
-## 7. 接口清单
+## 7. Composition（感知层：多节点共进程）
+
+类似 CyberRT「多 Component 同进程调度」。本仓库在 **感知层** 落地：
+
+```
+进程: perception_container (rclcpp_components)
+  ├─ SafetyMonitorNode   (plugin: robot_perception::SafetyMonitorNode)
+  └─ ObjectDetectorNode  (plugin: robot_perception::ObjectDetectorNode)
+```
+
+| 对比项 | 独立进程 `Node` | Composition `ComposableNode` |
+|--------|-----------------|------------------------------|
+| 进程数 | 2（safety + detector） | 1（container） |
+| 崩溃隔离 | 好 | 差（共命运） |
+| 开销 | DDS 跨进程 | 更低，同 Executor 可调度 |
+| 对外接口 | 话题/节点名不变 | 话题/节点名不变 |
+
+**设计取舍（与生产一致）**：
+
+- 驱动 / 监督 / 运动：保持独立进程（故障隔离）
+- 感知内部多模块：Composition 共进程（像 CyberRT）
+
+切换方式：
+
+```bash
+# 默认：感知 Composition
+ros2 launch robot_bringup robot_bringup.launch.py
+
+# 感知改回双进程（对照学习）
+ros2 launch robot_bringup robot_bringup.launch.py use_composition:=false
+```
+
+源码：`robot_perception/src/*_component.cpp`，用 `RCLCPP_COMPONENTS_REGISTER_NODE` 注册；CMake 的 `rclcpp_components_register_node` 同时生成可单独 `ros2 run` 的可执行文件。
+
+---
+
+## 8. 接口清单
 
 ### Topic
 
@@ -179,7 +218,7 @@ motion_executor ──/motion/plan_trajectory (Service)──► trajectory_plan
 
 ---
 
-## 8. 与真实生产的差异（本仓库定位）
+## 9. 与真实生产的差异（本仓库定位）
 
 本仓库是**可运行的架构骨架 + 仿真实现**，便于学习。真实产线还会增加：
 
@@ -188,33 +227,37 @@ motion_executor ──/motion/plan_trajectory (Service)──► trajectory_plan
 - 硬实时控制回路（独立 RTOS 或 ros2_control）
 - 诊断上报（`diagnostic_updater`）、权限/HMI、OTA
 - DDS QoS 调优、多机域隔离、网络安全
+- 更多层 Composition（如整个感知栈一个 container）
 
-但**分层、接口、bringup、supervisor、lifecycle** 的组织方式与生产一致。
+但**分层、接口、bringup、supervisor、lifecycle、composition 混合部署** 的组织方式与生产一致。
 
 ---
 
-## 9. 扩展指南
+## 10. 扩展指南
 
 | 需求 | 建议 |
 |------|------|
 | 换机械臂型号 | 只改 `robot_driver`，保持 `/robot/state` 不变 |
-| 加视觉算法 | 新包发布到 `/perception/objects`，不改 supervisor |
+| 加视觉算法 | 新包发布到 `/perception/objects`，不改 supervisor；可做成 Component 塞进同一 container |
 | 加新任务类型 | 在 `robot_interfaces` 增 action，supervisor 调度 |
 | 多工位 | 每工位独立 namespace + 独立 bringup |
 | 仿真/实车切换 | launch 参数 `use_sim_time` + 不同 driver 插件 |
+| 运动层也 Composition | 把 planner+executor 注册为 Component，仿照 perception.launch.py |
 
 ---
 
-## 10. 源码目录
+## 11. 源码目录
 
 ```
 src/
 ├── robot_interfaces/     # API 契约
-├── robot_driver/         # 驱动层 (Lifecycle)
-├── robot_perception/     # 感知 + 安全
-├── robot_motion/         # 规划 + 执行
-├── robot_supervisor/     # 状态机
+├── robot_driver/         # 驱动层 (Lifecycle，独立进程)
+├── robot_perception/     # 感知 + 安全 (Component，默认同进程)
+│   └── src/*_component.cpp
+├── robot_motion/         # 规划 + 执行 (独立进程)
+├── robot_supervisor/     # 状态机 (独立进程)
 └── robot_bringup/        # Launch + 配置
+    └── launch/perception.launch.py   # use_composition 开关
 ```
 
 详细操作见 [industrial_robot_guide.md](./industrial_robot_guide.md)。

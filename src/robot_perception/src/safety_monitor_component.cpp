@@ -1,19 +1,26 @@
 #include <cmath>
 #include <memory>
 
+#include "rclcpp/rclcpp.hpp"
+#include "rclcpp_components/register_node_macro.hpp"
 #include "robot_interfaces/msg/robot_state.hpp"
 #include "robot_interfaces/msg/safety_status.hpp"
-#include "rclcpp/rclcpp.hpp"
 
 using RobotState = robot_interfaces::msg::RobotState;
 using SafetyStatus = robot_interfaces::msg::SafetyStatus;
 
-/** 安全监控：根据 TCP 位置判断安全区域，发布 /robot/safety */
+namespace robot_perception
+{
+
+/**
+ * 安全监控组件：可独立进程运行，也可加载进 component_container。
+ * 根据 TCP 位置判断安全区域，发布 /robot/safety。
+ */
 class SafetyMonitorNode : public rclcpp::Node
 {
 public:
-  SafetyMonitorNode()
-  : Node("safety_monitor")
+  explicit SafetyMonitorNode(const rclcpp::NodeOptions & options)
+  : Node("safety_monitor", options)
   {
     declare_parameter<double>("warning_radius_m", 0.8);
     declare_parameter<double>("violation_radius_m", 1.2);
@@ -28,7 +35,7 @@ public:
       "robot/state", 10,
       std::bind(&SafetyMonitorNode::on_robot_state, this, std::placeholders::_1));
 
-    RCLCPP_INFO(get_logger(), "Safety monitor ready");
+    RCLCPP_INFO(get_logger(), "Safety monitor ready (component)");
   }
 
 private:
@@ -61,10 +68,6 @@ private:
   rclcpp::Subscription<RobotState>::SharedPtr state_sub_;
 };
 
-int main(int argc, char * argv[])
-{
-  rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<SafetyMonitorNode>());
-  rclcpp::shutdown();
-  return 0;
-}
+}  // namespace robot_perception
+
+RCLCPP_COMPONENTS_REGISTER_NODE(robot_perception::SafetyMonitorNode)

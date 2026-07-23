@@ -11,6 +11,7 @@
 
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
+  <exec_depend>rclcpp_components</exec_depend>
   <exec_depend>robot_driver</exec_depend>
   <exec_depend>robot_perception</exec_depend>
   <exec_depend>robot_motion</exec_depend>
